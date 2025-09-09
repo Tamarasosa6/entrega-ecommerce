@@ -1,11 +1,12 @@
 const fs = require('fs').promises;
 
 class ProductManager {
-  constructor(path) {
-    this.path = path;
+  constructor() {
+    this.path = './src/data/products.json';
+    this.validTypes = ['ABC', 'BC', 'CO2', 'AFFF', 'K', 'D'];
   }
 
-  async getProducts() {
+  async #readFile() {
     try {
       const data = await fs.readFile(this.path, 'utf-8');
       return JSON.parse(data);
@@ -14,38 +15,70 @@ class ProductManager {
     }
   }
 
-  async addProduct(product) {
-    const products = await this.getProducts();
-    const newProduct = {
-      ...product,
-      id: products.length > 0 ? products[products.length - 1].id + 1 : 1,
-    };
-    products.push(newProduct);
-    await fs.writeFile(this.path, JSON.stringify(products, null, 2));
-    return newProduct;
+  async #writeFile(data) {
+    await fs.writeFile(this.path, JSON.stringify(data, null, 2));
+  }
+
+  async getProducts() {
+    return await this.#readFile();
   }
 
   async getProductById(id) {
-    const products = await this.getProducts();
+    const products = await this.#readFile();
     return products.find(p => p.id === id);
   }
 
-  async updateProduct(id, updatedFields) {
-    const products = await this.getProducts();
-    const productIndex = products.findIndex(p => p.id === id);
-    if (productIndex !== -1) {
-      products[productIndex] = { ...products[productIndex], ...updatedFields };
-      await fs.writeFile(this.path, JSON.stringify(products, null, 2));
-      return products[productIndex];
+  async addProduct(product) {
+    const products = await this.#readFile();
+    if (products.some(p => p.code === product.code)) {
+      throw new Error('El código del matafuego ya existe');
     }
-    return null;
+    if (!this.validTypes.includes(product.type)) {
+      throw new Error('Tipo de matafuego inválido. Tipos permitidos: ' + this.validTypes.join(', '));
+    }
+    const id = products.length ? Math.max(...products.map(p => p.id)) + 1 : 1;
+    const newProduct = {
+      id,
+      title: product.title,
+      description: product.description,
+      code: product.code,
+      price: product.price,
+      status: true,
+      stock: product.stock,
+      category: product.category,
+      type: product.type,
+      capacity: product.capacity,
+      certifications: product.certifications || [],
+      thumbnails: product.thumbnails || []
+    };
+    products.push(newProduct);
+    await this.#writeFile(products);
+    return newProduct;
+  }
+
+  async updateProduct(id, updatedFields) {
+    const products = await this.#readFile();
+    const productIndex = products.findIndex(p => p.id === id);
+    if (productIndex === -1) return null;
+    if (updatedFields.code && products.some(p => p.code === updatedFields.code && p.id !== id)) {
+      throw new Error('El código del matafuego ya existe');
+    }
+    if (updatedFields.type && !this.validTypes.includes(updatedFields.type)) {
+      throw new Error('Tipo de matafuego inválido. Tipos permitidos: ' + this.validTypes.join(', '));
+    }
+    const updatedProduct = { ...products[productIndex], ...updatedFields, id };
+    products[productIndex] = updatedProduct;
+    await this.#writeFile(products);
+    return updatedProduct;
   }
 
   async deleteProduct(id) {
-    const products = await this.getProducts();
-    const filteredProducts = products.filter(p => p.id !== id);
-    await fs.writeFile(this.path, JSON.stringify(filteredProducts, null, 2));
-    return filteredProducts.length !== products.length;
+    const products = await this.#readFile();
+    const productIndex = products.findIndex(p => p.id === id);
+    if (productIndex === -1) return null;
+    products.splice(productIndex, 1);
+    await this.#writeFile(products);
+    return true;
   }
 }
 
